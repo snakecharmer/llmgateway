@@ -14,6 +14,7 @@
 	],
 	"scripts": {
 		"build": "tsc && SERVER_PRESET=static vinxi build",
+		"build:aws": "tsc && SERVER_PRESET=aws-lambda vinxi build",
 		"dev": "vinxi dev --port 3002",
 		"generate": "openapi-typescript ../api/openapi.json -o ./src/lib/api/v1.d.ts",
 		"start": "vinxi serve --dir .output/public/"

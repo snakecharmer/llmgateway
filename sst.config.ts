@@ -109,19 +109,33 @@ export default $config({
 
         // Web Application, local available at http://localhost:3002
         const web = new sst.aws.TanStackStart("LlmGwWeb", {
+            link: [llmGwApi],
+            // permissions: [
+            //     sst.aws.permission({
+            //         actions: [
+            //             "cloudfront-keyvaluestore:DescribeKeyValueStore",
+            //             "cloudfront-keyvaluestore:GetKey",
+            //             "cloudfront-keyvaluestore:PutKey",
+            //             "cloudfront-keyvaluestore:DeleteKey",
+            //             "cloudfront-keyvaluestore:ListKeys"
+            //         ],
+            //         resources: ["*"],
+            //     }),
+            // ],
             path: "apps/ui",
-            buildCommand: "pnpm run build",
+            buildCommand: "pnpm run build:aws",
             dev: {
                 command: "pnpm run dev",
                 autostart: true,
             },
             environment: {
-                VITE_API_URL: $interpolate`${llmGwApi.url}/`,
-                VITE_API: $interpolate`${llmGwApi.url}/`,
+                VITE_API_URL: $dev === true ? "http://localhost:4001" : $interpolate`${llmGwApi.url}/`,
+                VITE_API: $dev === true ? "http://localhost:4001" : $interpolate`${llmGwApi.url}/`,
                 SERVER_PRESET: "aws-lambda",
             }
         });
 
+        // DEV Section
         // Start the Docker-Compose services (PostgreSQL and Redis)
         new sst.x.DevCommand("docker-compose", {
             link: [database, redis],
@@ -165,17 +179,30 @@ export default $config({
             },
         });
 
-        // Start the Redis CLI command
-        new sst.x.DevCommand("RedisCli", {
-            link: [redis],
+        // Start the local Api Gateway (expose port 4001)
+        new sst.x.DevCommand("ApiGateway-dev", {
+            link: [redis, database],
             dev: {
-                command: $interpolate`npx redis-cli -h ${redis.host} -p ${redis.port} -a ${redis.password}`,
-                autostart: false,
+                directory: "apps/gateway",
+                command: $interpolate`pnpm run dev`,
+                autostart: true,
             },
         });
 
+        // Start the local Api Gateway (expose port 4002)
+        new sst.x.DevCommand("API-dev", {
+            link: [redis, database],
+            dev: {
+                directory: "apps/api",
+                command: $interpolate`pnpm run dev`,
+                autostart: true,
+            },
+        });
+
+        // End DEV Section
+
         return {
-            web: web.url,
+            // web: web.url,
             gw: gw.url,
             api: llmGwApi.url,
         };
