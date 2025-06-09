@@ -112,12 +112,13 @@ export default $config({
             path: "apps/ui",
             buildCommand: "pnpm run build",
             dev: {
-                directory: "apps/ui",
                 command: "pnpm run dev",
+                autostart: true,
             },
             environment: {
                 VITE_API_URL: $interpolate`${llmGwApi.url}/`,
                 VITE_API: $interpolate`${llmGwApi.url}/`,
+                SERVER_PRESET: "aws-lambda",
             }
         });
 
