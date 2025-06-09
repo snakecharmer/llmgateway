@@ -49,17 +49,22 @@ export default $config({
             engine: "postgres",
             vpc,
             proxy: true,
-            // INFO: If you want to use with sst dev the local database, uncomment the dev config below
-            // dev: {
-            //     username: "postgres",
-            //     password: "pw",
-            //     database: "db",
-            //     port: 5432
-            // },
+            // INFO: Use the local database for development
+            // use the same credentials as in the docker-compose.yml
+            dev: {
+                username: "postgres",
+                password: "pw",
+                database: "db",
+                port: 5432
+            },
         });
-        const DATABASE_URL = $interpolate`postgresql://${database.username}:${database.password}@${database.host}:${database.port}/${database.database}`;
-
-        const redis = new sst.aws.Redis("LlmGwRedis", { vpc });
+        const redis = new sst.aws.Redis("LlmGwRedis", {
+            vpc,
+            dev: {
+                host: "localhost",
+                port: 6379,
+            },
+        });
         const gw = new sst.aws.Function("LlmGw", {
             link: [database, redis],
             vpc,
@@ -77,7 +82,7 @@ export default $config({
                 // KLUSTER_AI_API_KEY: "kluster-123",
                 // TOGETHER_AI_API_KEY: "together-123",
                 NODE_ENV: "production",
-                DATABASE_URL: DATABASE_URL,
+                DATABASE_URL: $interpolate`postgresql://${database.username}:${database.password}@${database.host}:${database.port}/${database.database}`,
                 REDIS_HOST: $interpolate`${redis.host}`,
                 REDIS_PORT: $interpolate`${redis.port}`,
                 REDIS_PASSWORD: $interpolate`${redis.password}`
@@ -94,7 +99,7 @@ export default $config({
             environment: {
                 //UI_URL: web.url,
                 NODE_ENV: "production",
-                DATABASE_URL: DATABASE_URL
+                DATABASE_URL: $interpolate`postgresql://${database.username}:${database.password}@${database.host}:${database.port}/${database.database}`
                 // API_URL: api,
                 // ORIGIN_URL: ${ORIGIN_URL:-http://localhost:3002},
                 // PASSKEY_RP_ID: ${PASSKEY_RP_ID:-localhost},
@@ -102,23 +107,42 @@ export default $config({
             },
         });
 
-        const web = new sst.aws.StaticSite("LlmGwWeb", {
+        // Web Application, local available at http://localhost:3002
+        const web = new sst.aws.TanStackStart("LlmGwWeb", {
             path: "apps/ui",
-            build: {
-                output: "dist",
-                command: "pnpm run build",
+            buildCommand: "pnpm run build",
+            dev: {
+                directory: "apps/ui",
+                command: "pnpm run dev",
             },
             environment: {
                 VITE_API_URL: $interpolate`${llmGwApi.url}/`,
                 VITE_API: $interpolate`${llmGwApi.url}/`,
+            }
+        });
+
+        // Start the Docker-Compose services (PostgreSQL and Redis)
+        new sst.x.DevCommand("docker-compose", {
+            link: [database, redis],
+            environment: {
+                AWS_PROFILE: "sts",
+                // DATABASE_URL: $interpolate`postgresql://${database.username}:${database.password}@${database.host}:${database.port}/${database.database}`,
+                // REDIS_HOST: $interpolate`${redis.host}`,
+                // REDIS_PORT: $interpolate`${redis.port}`,
+                // REDIS_PASSWORD: $interpolate`${redis.password}`,
+            },
+            dev: {
+                command: "docker compose up -d",
+                autostart: false,
             },
         });
 
+        // Start the Drizzle migration command
         new sst.x.DevCommand("migrate", {
             link: [database],
             environment: {
                 AWS_PROFILE: "sts",
-                DATABASE_URL: DATABASE_URL
+                DATABASE_URL: $interpolate`postgresql://${database.username}:${database.password}@${database.host}:${database.port}/${database.database}`
             },
             dev: {
                 command: `pnpm run migrate`,
@@ -126,6 +150,7 @@ export default $config({
             },
         });
 
+        // Start the Drizzle Studio command
         new sst.x.DevCommand("Studio", {
             link: [database],
             environment: {
@@ -139,6 +164,7 @@ export default $config({
             },
         });
 
+        // Start the Redis CLI command
         new sst.x.DevCommand("RedisCli", {
             link: [redis],
             dev: {
